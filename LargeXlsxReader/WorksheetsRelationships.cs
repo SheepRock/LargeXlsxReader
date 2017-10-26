@@ -6,7 +6,10 @@ using System.Threading.Tasks;
 
 namespace LargeXlsxReader
 {
-    public class Class1
-    {
-    }
+	class WorksheetsRelationships
+	{
+		public string RelationshipId;
+		public string SheetName;
+		public int SheetId;
+	}
 }
