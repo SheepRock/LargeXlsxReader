@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
@@ -13,12 +11,32 @@ using System.IO;
 
 namespace LargeXlsxReader
 {
-    public class XlsxStreamReader
+	public class XlsxStreamReader
     {
+		#region constants
+
+		/// <summary>
+		/// Maximum number of Rows in a xlsx file
+		/// </summary>
+		public const int MaxRows = 1048576;
+		/// <summary>
+		/// Maximum number of columns in a xlsx file
+		/// </summary>
+		public const int MaxColumns = 16384;
+
+		#endregion
+
+		#region private fields
+
 		List<string> sStrings;
 		List<WorksheetsRelationships> wRelationships;
 		string id;
 		string _fileName;
+
+		#endregion
+
+		#region constructors
+
 		/// <summary>
 		/// Creates a new instance of XlsxStreamReader
 		/// </summary>
@@ -35,6 +53,7 @@ namespace LargeXlsxReader
 				throw new ArgumentException($"The sheet {sheetName} doesn't exists");
 			}
 		}
+		
 		/// <summary>
 		/// Creates a new instance of XlsxStreamReader
 		/// </summary>
@@ -51,6 +70,10 @@ namespace LargeXlsxReader
 				throw new ArgumentException($"The sheet {sheetId} doesn't exists");
 			}
 		}
+
+		#endregion
+
+		#region Methods
 
 		/// <summary>
 		/// IEnumerable with Excel's rows as an object array
@@ -175,6 +198,10 @@ namespace LargeXlsxReader
 				}
 			}
 		}
+
+		#endregion
+
+		#region public static methods
 
 		/// <summary>
 		/// Creates a CSV from the sheetName of the xlsxFile, using the separator
@@ -479,50 +506,6 @@ namespace LargeXlsxReader
 			return dt;
 		}
 
-		private static List<WorksheetsRelationships> GetWorksheetsIds(string xlsxFile)
-		{
-			List<WorksheetsRelationships> relationships = new List<WorksheetsRelationships>();
-			using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Open(xlsxFile, false))
-			{
-				WorkbookPart workbookPart = spreadsheetDocument.WorkbookPart;
-				var sheets = workbookPart.Workbook.Sheets.Cast<Sheet>().ToList();
-				sheets.ForEach(x => 
-					relationships.Add(
-						new WorksheetsRelationships()
-						{
-							RelationshipId = x.Id.Value,
-							SheetName = x.Name.Value,
-							SheetId = Convert.ToInt32(x.SheetId.Value)
-						}
-					)
-				);
-			}
-			return relationships;
-		}
-
-		private static List<string> GetSharedStrings(string xlsxFile)
-		{
-			List<string> dicionario = new List<string>();
-			using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Open(xlsxFile, false))
-			{
-				
-
-				WorkbookPart workbookPart = spreadsheetDocument.WorkbookPart;
-
-				//Get the string List, which is stored in a separate file
-				var sharedStringPart = workbookPart.SharedStringTablePart;
-				OpenXmlReader reader = OpenXmlReader.Create(sharedStringPart);
-				while (reader.Read())
-				{
-					if (reader.IsStartElement && reader.ElementType == typeof(Text))
-					{
-						dicionario.Add(reader.GetText());
-					}
-				}
-			}
-			return dicionario;
-		}
-		
 		/// <summary>
 		/// Translates an address of type excel address to an numeric array, base 1. 
 		/// If it's a cell, the returning array has 2 elements, line and column;
@@ -536,15 +519,44 @@ namespace LargeXlsxReader
 			address = address.ToUpper();
 			int[] retorno = new int[2];
 			string[] partes = address.Split(':');
+			string row;
+			string column;
 
+			// If it's a range address, fill the last part
 			if (partes.Length == 2)
 			{
 				retorno = new int[4];
-				retorno[2] = int.Parse(Regex.Match(partes[1], "[0-9]+").Value);
-				retorno[3] = ColumnIndex(Regex.Match(partes[1], "[A-Z]+").Value);
+				//If it's a Column Address, like C:C, the row regex will return empty.
+				//The first row will be 1 and the last the MaxRows
+				row = Regex.Match(partes[1], "[0-9]+").Value;
+				if (row != "")
+					retorno[2] = int.Parse(row);
+				else
+					retorno[2] = MaxRows;
+				//If it's a Row Address, like 3:3, the column regex will return empty.
+				//The first column will be 1 and the last the MaxColumns
+				column = Regex.Match(partes[1], "[A-Z]+").Value;
+				if (column != "")
+					retorno[3] = ColumnIndex(column);
+				else
+					retorno[3] = MaxColumns;
 			}
-			retorno[0] = int.Parse(Regex.Match(partes[0], "[0-9]+").Value);
-			retorno[1] = ColumnIndex(Regex.Match(partes[0], "[A-Z]+").Value);
+
+			//If it's a Column Address, like C:C, the row regex will return empty.
+			//The first row will be 1 and the last the MaxRows
+			row = Regex.Match(partes[0], "[0-9]+").Value;
+			if (row != "")
+				retorno[0] = int.Parse(row);
+			else
+				retorno[0] = 1;
+			//If it's a Row Address, like 3:3, the column regex will return empty.
+			//The first column will be 1 and the last the MaxColumns
+			column = Regex.Match(partes[0], "[A-Z]+").Value;
+			if (column != "")
+				retorno[1] = ColumnIndex(column);
+			else
+				retorno[1] = 1;
+
 			return retorno;
 		}
 
@@ -561,23 +573,12 @@ namespace LargeXlsxReader
 		public static bool TryTranslateAddress(string address, out int[] matrix)
 		{
 			address = address.ToUpper();
-			if (!Regex.IsMatch(address, @"(\$?[A-Z]+\$?[1-9][0-9]*(:\$?[A-Z]+\$?[1-9][0-9]*)?|\$?[1-9][0-9]*:\$?[1-9][0-9]*|\$?[A-Z]+:\$?[A-Z]+)"))
+			if (!Regex.IsMatch(address,	@"(\$?[A-Z]+\$?[1-9][0-9]*(:\$?[A-Z]+\$?[1-9][0-9]*)?|\$?[1-9][0-9]*:\$?[1-9][0-9]*|\$?[A-Z]+:\$?[A-Z]+)"))
 			{
 				matrix = null;
 				return false;
-			}
-			int[] retorno = new int[2];
-			string[] partes = address.Split(':');
-
-			if (partes.Length == 2)
-			{
-				retorno = new int[4];
-				retorno[2] = int.Parse(Regex.Match(partes[1], "[0-9]+").Value);
-				retorno[3] = ColumnIndex(Regex.Match(partes[1], "[A-Z]+").Value);
-			}
-			retorno[0] = int.Parse(Regex.Match(partes[0], "[0-9]+").Value);
-			retorno[1] = ColumnIndex(Regex.Match(partes[0], "[A-Z]+").Value);
-			matrix = retorno;
+			}			
+			matrix = TranslateAddress(address);
 			return true;
 		}
 
@@ -589,18 +590,16 @@ namespace LargeXlsxReader
 		public static int ColumnIndex(string columnAddress)
 		{
 			int columnIndex = 0;
-			int multiplier = 0;
-			var chars = columnAddress.ToList();
-			chars.Reverse();
-			foreach (char c in chars)
+			int multiplier = columnAddress.Length - 1;
+			foreach (char c in columnAddress)
 			{
+				//ASCII A is 65 Z is 90
 				if (c < 65 || c > 90)
 				{
 					throw new ArgumentException($"The column address {columnAddress} is not valid");
 				}
-				columnIndex += (c - 64) * (int)Math.Round(Math.Pow(26, multiplier));
-				multiplier++;
-			}
+				columnIndex += (c - 64) * (int)Math.Pow(26, multiplier--);
+			}			
 			return columnIndex;
 		}
 
@@ -620,10 +619,58 @@ namespace LargeXlsxReader
 				address += (char)(index + 64);
 			else
 			{
-				address = ColumnName((index-1)/26);
-				address += (char)((index - 1)%26 + 65);
+				address = ColumnName((index - 1) / 26);
+				address += (char)((index - 1) % 26 + 65);
 			}
 			return address;
 		}
+
+		#endregion
+
+		#region private static methods
+
+		private static List<WorksheetsRelationships> GetWorksheetsIds(string xlsxFile)
+		{
+			List<WorksheetsRelationships> relationships = new List<WorksheetsRelationships>();
+			using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Open(xlsxFile, false))
+			{
+				WorkbookPart workbookPart = spreadsheetDocument.WorkbookPart;
+				var sheets = workbookPart.Workbook.Sheets.Cast<Sheet>().ToList();
+				sheets.ForEach(x =>
+					relationships.Add(
+						new WorksheetsRelationships()
+						{
+							RelationshipId = x.Id.Value,
+							SheetName = x.Name.Value,
+							SheetId = Convert.ToInt32(x.SheetId.Value)
+						}
+					)
+				);
+			}
+			return relationships;
+		}
+
+		private static List<string> GetSharedStrings(string xlsxFile)
+		{
+			List<string> dicionario = new List<string>();
+			using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Open(xlsxFile, false))
+			{
+				WorkbookPart workbookPart = spreadsheetDocument.WorkbookPart;
+
+				//Get the string List, which is stored in a separate file
+				var sharedStringPart = workbookPart.SharedStringTablePart;
+				OpenXmlReader reader = OpenXmlReader.Create(sharedStringPart);
+				while (reader.Read())
+				{
+					if (reader.IsStartElement && reader.ElementType == typeof(Text))
+					{
+						dicionario.Add(reader.GetText());
+					}
+				}
+			}
+			return dicionario;
+		}
+
+		#endregion
 	}
 }
