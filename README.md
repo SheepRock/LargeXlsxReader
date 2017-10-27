@@ -3,7 +3,7 @@
 ## What is LargeXlsxReader
 
 LargeXlsxReader is a library to help read huge xlsx files without a great memory footprint. 
-All xlsx file accesses are made through Stream.
+All xlsx file accesses are made through Stream. LargeXlsxReader uses Open XML SDK to work.
 
 ## Features and usage
 
